@@ -1,0 +1,14 @@
+comparisons/vendor/
+comparisons/.venv-models/
+comparisons/.venv-gaze/
+comparisons/.uv-cache/
+comparisons/native-build.log
+comparisons/__pycache__/
+.uv-cache/
+__pycache__/
+.venv/
+pilot-embed/
+run.log
+run.err.log
+models/
+*.task

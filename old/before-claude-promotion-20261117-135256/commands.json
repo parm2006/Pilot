@@ -1,0 +1,13 @@
+﻿{
+  "settings": { "minConfidence": 0.60, "keyDelayMs": 15 },
+  "commands": {
+    "copy": { "keys": "ctrl+c" },
+    "cut": { "keys": "ctrl+x" },
+    "paste": { "keys": "ctrl+v" },
+    "select all": { "keys": "ctrl+a" },
+    "pilot": { "builtin": "pilot" },
+    "stop listening": { "builtin": "pause" },
+    "start listening": { "builtin": "resume" },
+    "stop listener": { "builtin": "quit" }
+  }
+}
