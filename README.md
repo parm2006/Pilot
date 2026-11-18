@@ -51,13 +51,15 @@ Left wink performs a primary click; right wink right-clicks when enabled by cali
 
 ## Code and checks
 
-All source and test files are directly in the root:
+Active source and test files are directly in the root:
 
 - `pilot.py`: camera, tracking, calibration, cursor, preview, and hotkeys.
 - `pilot_voice.py`: microphone, recognition, command matching, and execution.
 - `pilot_dictation.py`: pause detection, Whisper, and Unicode text insertion.
 - `commands.json`: command definitions.
 - `test_dictation.py`, `test_voice_logging.py`: automated checks.
+
+`old/` keeps earlier scripts and their command data in a flat archive, without nested folders, extra READMEs, indexes, environments, or caches.
 
 `pyproject.toml`, `uv.lock`, and `.python-version` define the environment. `.venv` is the installed Python environment; `.git` stores version history.
 
