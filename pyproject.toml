@@ -14,8 +14,5 @@ dependencies = [
     "webrtcvad-wheels>=2.0.14,<3",
 ]
 
-[project.optional-dependencies]
-training = ["sentence-transformers[train]>=3", "datasets>=2"]
-
 [tool.uv]
 package = false

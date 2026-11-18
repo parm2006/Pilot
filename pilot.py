@@ -963,7 +963,7 @@ def parse_args(argv=None):
     g.add_argument("--embed-margin", type=float, default=0.04,
                    help="best match must beat the next different command by this much")
     g.add_argument("--voice-verbose", action="store_true", help="print every transcript and fuzzy-match scores")
-    g.add_argument("--whisper-model", default="base.en", help="local Whisper dictation model (download into models/whisper first)")
+    g.add_argument("--whisper-model", default="base.en", help="local Whisper dictation model (cached in ~/.eye_mouse/whisper)")
     g.add_argument("--dictation-gap", type=float, default=0.8, help="seconds of silence ending a dictated phrase (0.2 to 5)")
     return p.parse_args(argv)
 

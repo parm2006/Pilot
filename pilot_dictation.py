@@ -6,7 +6,7 @@ import numpy as np
 
 SAMPLE_RATE = 16000
 FRAME_BYTES = 640  # WebRTC VAD accepts 20 ms of mono int16 audio at 16 kHz.
-MODEL_CACHE = Path(__file__).resolve().parent / "models" / "whisper"
+MODEL_CACHE = Path.home() / ".eye_mouse" / "whisper"
 
 
 class SpeechBuffer:

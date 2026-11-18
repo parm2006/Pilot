@@ -1,102 +1,68 @@
 # Pilot
 
-Pilot controls the Windows cursor with a webcam, wink clicks, and spoken commands. Say **“dictate”**, speak a phrase, and pause: local Whisper transcribes it and types the text into the focused window.
-
-Camera and speech processing run on your computer. This is an experimental accessibility project; tracking and recognition still depend on calibration, lighting, microphone quality, and hardware.
+Local, hands-free Windows cursor control using a webcam, wink clicks, spoken commands, and Whisper dictation.
 
 ## Setup
 
-Use Windows, Python 3.12, and `uv`, with a webcam and microphone. Run from the repository root, outside WSL.
+Requires Windows, Python 3.12, `uv`, a webcam, and a microphone. Run outside WSL.
 
 ```powershell
-git clone https://github.com/parm2006/Pilot.git
-cd Pilot
 uv sync
-uv run python -c "from faster_whisper.utils import download_model; from pilot_dictation import MODEL_CACHE; download_model('base.en', cache_dir=str(MODEL_CACHE))"
+uv run python -B -c "from faster_whisper.utils import download_model; from pilot_dictation import MODEL_CACHE; download_model('base.en', cache_dir=str(MODEL_CACHE))"
 ```
 
-The last command downloads the Whisper dictation weights into `models/whisper`. They load offline on subsequent launches. The face, hand, and Vosk speech models download on first use into `%USERPROFILE%\.eye_mouse`; that folder also stores calibration.
+Models and calibration live under `%USERPROFILE%\.eye_mouse`, outside the project. Whisper uses `.eye_mouse\whisper`; the other models download on first use. Audio is processed locally.
 
-Optional: install and open Ollama, then download the text embedding model for fuzzy command matching:
-
-```powershell
-ollama pull all-minilm
-```
-
-Ollama matches recognized text to commands. Vosk recognizes commands; Whisper transcribes dictation. Audio is not sent to Ollama or a cloud service.
+Optional fuzzy command matching uses Ollama. Open Ollama and run `ollama pull all-minilm`, or add `--embed-backend none` when launching Pilot.
 
 ## Run
 
 ```powershell
-uv run python -u pilot.py --paused --voice-verbose
+uv run python -B -u pilot.py --paused --voice-verbose
 ```
 
-Follow calibration if prompted. Cursor control starts paused; **F8** enables it and **F10** quits. Voice commands remain active while the cursor is paused.
+Follow calibration if prompted. **F8** enables cursor control; **F10** quits. Add `--dry-run` to print actions without sending mouse clicks, keyboard shortcuts, or dictated text to other apps. `-B` prevents Python bytecode cache folders beside the source files.
 
-To run without Ollama, add `--embed-backend none`. To inspect tracking, recognition, and dictation without sending mouse clicks, shortcuts, or text to other apps, use:
-
-```powershell
-uv run python -u pilot.py --dry-run --voice-verbose --embed-backend none
-```
-
-## Spoken controls
+## Voice commands
 
 | Say | Action |
 | --- | --- |
-| “center cursor” | Recenter the cursor |
-| “recalibrate” | Repeat tracking calibration |
-| “calibrate winks” | Repeat wink calibration |
+| “center cursor” | Recenter |
+| “recalibrate” | Calibrate tracking |
+| “calibrate winks” | Calibrate wink clicks |
 | “switch cursor mode” | Cycle absolute / joystick control |
 | “switch tracking input” | Cycle head / eyes / hybrid input |
-| “pause pilot” / “resume pilot” | Pause or resume cursor control |
-| “pause listener” / “resume listener” | Pause or resume voice commands |
-| “quit pilot” or “stop listener” | Exit the whole program |
-| “dictate” | Capture and type one spoken phrase |
+| “pause pilot” / “resume pilot” | Pause / resume cursor control |
+| “pause listener” / “resume listener” | Pause / resume voice commands |
+| “quit pilot” or “stop listener” | Exit Pilot |
+| “dictate” | Capture one phrase for local Whisper dictation |
 
-Say **“control” followed by one letter**, such as “control C” or “control V”, to send Ctrl+C or Ctrl+V to the focused app. A–Z are supported; arbitrary combinations such as “control shift T” are not. Named commands can still send their configured shortcuts.
+“Control” plus any single letter sends that shortcut to the focused app: “control C”, “control V”, “control A”, and so on. Arbitrary multi-modifier shortcuts are not supported. More named commands, aliases, clicks, scrolling, Page Up/Down, and media keys are defined in [commands.json](commands.json), which reloads when saved. “Stop” stops scrolling only.
 
-Other commands include copy/paste, selection, navigation, Page Up/Down, browser shortcuts, mouse clicks, scrolling, and Windows media keys. The full list and aliases live in [commands.json](commands.json), which reloads when saved. Shortcuts act on the focused app; scroll commands act at the pointer. “Stop” stops scrolling; it does not quit Pilot.
+## Dictation and backups
 
-## Dictation
+Focus a text field, say **“dictate”**, wait for `DICTATING` in the preview or the terminal's ready message, then speak. A pause of about **0.8 seconds** ends capture; Whisper transcribes and inserts the phrase, then Pilot returns to command mode. Say “dictate” again for another phrase. Text appears after decoding, not word by word. Adjust the pause using `--dictation-gap 1.2`.
 
-1. Focus the text field you want to type into.
-2. Say **“dictate”** and wait for the ready message in the terminal or the `DICTATING` status in the preview.
-3. Speak your text. About **0.8 seconds of silence** ends capture.
-4. Local Whisper transcribes the phrase, Pilot types it, then returns to command mode. Say “dictate” again for another phrase.
+Dictation uses English `base.en` on the CPU, with a 60-second phrase limit and a ten-second timeout if no speech starts. Spoken command names during dictation become text. Raising a hand mutes microphone input and cancels pending dictation. Text is not inserted if the foreground window changed before insertion.
 
-There is one microphone stream. Pilot routes incoming audio to either command recognition or dictation. Text appears after the phrase ends and decoding finishes; it is not word-by-word live transcription. Spoken command names inside dictation are treated as text.
+**F6** toggles voice and cancels dictation; **F7** recenters; **F9** recalibrates. In the preview, Space/P pauses, C recenters, R recalibrates, W calibrates winks, M switches cursor mode, I switches input, V toggles voice, and Q/Esc quits. Bare C/R are not global hotkeys.
 
-The default model is English `base.en`, running on the CPU with int8 inference. Each phrase is capped at 60 seconds; waiting ten seconds without speech cancels capture. Change the pause threshold with `--dictation-gap 1.2` if natural pauses cut phrases short.
+Left wink performs a primary click; right wink right-clicks when enabled by calibration. `--right` swaps the eyes. Holding both eyes closed for about 1.2 seconds toggles cursor control.
 
-Raising a hand to the camera discards microphone input and cancels pending dictation. **F6** pauses voice and cancels dictation. If the foreground window changes before insertion, the transcript is printed but not typed into the new window.
+## Code and checks
 
-## Keyboard and gesture backups
+All source and test files are directly in the root:
 
-| Control | Action |
-| --- | --- |
-| F6 | Toggle voice listening |
-| F7 | Recenter |
-| F8 | Toggle cursor control |
-| F9 | Recalibrate tracking |
-| F10 | Quit |
-| Preview: Space / P | Toggle cursor control |
-| Preview: C / R / W | Recenter / tracking calibration / wink calibration |
-| Preview: M / I / V | Cursor mode / tracking input / voice listening |
-| Preview: Q / Esc | Quit |
+- `pilot.py`: camera, tracking, calibration, cursor, preview, and hotkeys.
+- `pilot_voice.py`: microphone, recognition, command matching, and execution.
+- `pilot_dictation.py`: pause detection, Whisper, and Unicode text insertion.
+- `commands.json`: command definitions.
+- `test_dictation.py`, `test_voice_logging.py`: automated checks.
 
-Left wink performs the primary click; right wink performs a right click when enabled by calibration. `--right` swaps the eyes. Holding both eyes closed for about 1.2 seconds toggles cursor control. Bare C and R are only preview controls, so typing them in other apps does not recenter or recalibrate Pilot.
-
-## Files and checks
-
-- `pilot.py`: camera, tracking, calibration, cursor control, and preview.
-- `pilot_voice.py`: microphone capture, command recognition, matching, and execution.
-- `pilot_dictation.py`: speech/pause detection, local Whisper, and Unicode text insertion.
-- `commands.json`: active command definitions and aliases.
-- `finetune_embedder.py` and `paraphrases.json`: optional embedding-training tools; normal use does not require them. No trained weights are bundled.
-- `old/`: earlier versions, including the snapshot taken before promoting the former `claude-test` version into the root.
+`pyproject.toml`, `uv.lock`, and `.python-version` define the environment. `.venv` is the installed Python environment; `.git` stores version history.
 
 ```powershell
-uv run python -m unittest discover -v
+uv run python -B -m unittest discover -v
 ```
 
-Automated checks cover command routing, dictation boundaries, cancellation, focus changes, and dry-run behavior. Synthesized speech and Unicode insertion have also been checked locally. Accuracy with a person's voice and real webcam calibration still requires hands-on testing.
+Checks cover command routing, dictation boundaries, cancellation, focus changes, and dry-run behavior. Voice accuracy and webcam calibration still need hands-on testing.
