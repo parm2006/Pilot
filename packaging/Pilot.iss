@@ -1,11 +1,13 @@
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "0.1.1"
 #endif
 
 [Setup]
 AppId=PilotDesktop
 AppName=Pilot
 AppVersion={#AppVersion}
+VersionInfoProductName=Pilot
+VersionInfoDescription=Pilot Setup
 DefaultDirName={localappdata}\Programs\Pilot
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible

@@ -1,10 +1,30 @@
 import os
 from pathlib import Path
 import subprocess
+import tomllib
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.win32.versioninfo import (
+    FixedFileInfo, StringFileInfo, StringStruct, StringTable, VarFileInfo, VarStruct, VSVersionInfo,
+)
 
 root = Path(SPECPATH).parent
+version = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+version_parts = (*map(int, version.split(".")), 0)
+resource = VSVersionInfo(
+    ffi=FixedFileInfo(filevers=version_parts, prodvers=version_parts, fileType=1),
+    kids=[
+        StringFileInfo([StringTable("040904B0", [
+            StringStruct("FileDescription", "Pilot"),
+            StringStruct("FileVersion", version),
+            StringStruct("InternalName", "Pilot"),
+            StringStruct("OriginalFilename", "Pilot.exe"),
+            StringStruct("ProductName", "Pilot"),
+            StringStruct("ProductVersion", version),
+        ])]),
+        VarFileInfo([VarStruct("Translation", [1033, 1200])]),
+    ],
+)
 datas = [(str(root / name), ".") for name in ("commands.json", "pilot_listener.ps1")]
 for package in ("mediapipe", "faster_whisper"):
     datas += collect_data_files(package)
@@ -33,5 +53,5 @@ a = Analysis(
     hiddenimports=["pynput.keyboard._win32", "pynput.mouse._win32"],
 )
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Pilot", console=False)
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Pilot", console=False, version=resource)
 coll = COLLECT(exe, a.binaries, a.datas, name="Pilot")

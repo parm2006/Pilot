@@ -42,8 +42,8 @@ from typing import Optional
 import numpy as np
 
 from pilot_dictation import LocalWhisper, SpeechBuffer, foreground_window, type_text
+from pilot_paths import APP_DIR, cached_data
 
-APP_DIR = Path.home() / ".eye_mouse"
 VOSK_MODEL_NAME = "vosk-model-small-en-us-0.15"
 VOSK_MODEL_URL = f"https://alphacephei.com/vosk/models/{VOSK_MODEL_NAME}.zip"
 HAND_MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
@@ -370,8 +370,9 @@ class Actuator:
 # "talk to the hand": mute audio for a camera-facing palm with fingers spread
 # --------------------------------------------------------------------------- #
 def ensure_hand_model() -> Path:
-    if HAND_MODEL_PATH.exists() and HAND_MODEL_PATH.stat().st_size > 1_000_000:
-        return HAND_MODEL_PATH
+    cached_model = cached_data(HAND_MODEL_PATH.name)
+    if cached_model.exists() and cached_model.stat().st_size > 1_000_000:
+        return cached_model
     APP_DIR.mkdir(parents=True, exist_ok=True)
     print("Downloading MediaPipe hand_landmarker.task (~8 MB) ...")
     tmp = HAND_MODEL_PATH.with_suffix(".part")
@@ -488,10 +489,11 @@ class HandGate:
 def ensure_vosk_model(path_hint: Optional[str] = None) -> Path:
     if path_hint:
         return Path(path_hint)
+    cached_model = cached_data("vosk") / VOSK_MODEL_NAME
+    if (cached_model / "am").exists():
+        return cached_model
     root = APP_DIR / "vosk"
     model = root / VOSK_MODEL_NAME
-    if (model / "am").exists():
-        return model
     root.mkdir(parents=True, exist_ok=True)
     print(f"Downloading Vosk speech model {VOSK_MODEL_NAME} (~40 MB) ...")
     zpath = root / (VOSK_MODEL_NAME + ".zip")

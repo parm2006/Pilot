@@ -14,7 +14,7 @@ pilot.py - hands-free cursor control with frame-counted wink clicking
 * Webcam is assumed to sit top-middle of the screen, so "looking straight
   into the camera" is calibrated as the top-middle of the screen.
 * Guided calibration at start (9 screen points + a wink calibration).
-  It is saved to ~/.eye_mouse/profile.json and re-used next time.
+  Pilot saves your calibration and reuses it the next time you launch.
 
 Install (run this with *Windows* Python, not inside WSL):
     pip install mediapipe opencv-python numpy pyautogui pynput vosk sounddevice
@@ -58,6 +58,8 @@ from typing import Optional
 import cv2
 import numpy as np
 
+from pilot_paths import APP_DIR, cached_data, migrate_settings
+
 try:
     from pilot_voice import VoiceSystem
 except ImportError as _voice_err:  # pilot_voice.py missing -> run without voice
@@ -69,7 +71,6 @@ except ImportError as _voice_err:  # pilot_voice.py missing -> run without voice
 # --------------------------------------------------------------------------- #
 MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/face_landmarker/"
              "face_landmarker/float16/1/face_landmarker.task")
-APP_DIR = Path.home() / ".eye_mouse"
 MODEL_PATH = APP_DIR / "face_landmarker.task"
 PROFILE_PATH = APP_DIR / "profile.json"
 
@@ -147,8 +148,9 @@ def check_platform():
 
 
 def ensure_model() -> Path:
-    if MODEL_PATH.exists() and MODEL_PATH.stat().st_size > 1_000_000:
-        return MODEL_PATH
+    cached_model = cached_data(MODEL_PATH.name)
+    if cached_model.exists() and cached_model.stat().st_size > 1_000_000:
+        return cached_model
     script_dir = Path(__file__).resolve().parent
     for cand in (Path("face_landmarker.task"), script_dir / "face_landmarker.task"):
         if cand.exists() and cand.stat().st_size > 1_000_000:
@@ -850,7 +852,7 @@ KEYMAP = {27: "quit", ord("q"): "quit", ord("p"): "pause", ord(" "): "pause", 32
 
 
 class Preview:
-    NAME = "Eye Mouse Plus"
+    NAME = "Pilot"
 
     def __init__(self, width=480, screen=None):
         self.width, self.screen, self._placed = width, screen, False
@@ -963,7 +965,7 @@ def parse_args(argv=None):
     g.add_argument("--embed-margin", type=float, default=0.04,
                    help="best match must beat the next different command by this much")
     g.add_argument("--voice-verbose", action="store_true", help="print every transcript and fuzzy-match scores")
-    g.add_argument("--whisper-model", default="base.en", help="local Whisper dictation model (cached in ~/.eye_mouse/whisper)")
+    g.add_argument("--whisper-model", default="base.en", help="local Whisper dictation model from Pilot's cache")
     g.add_argument("--dictation-gap", type=float, default=0.8, help="seconds of silence ending a dictated phrase (0.2 to 5)")
     return p.parse_args(argv)
 
@@ -979,6 +981,7 @@ def make_wink(profile, args) -> WinkDetector:
 
 def run(args, *, on_calibrated=None):
     check_platform()
+    migrate_settings()
     mouse = Mouse(dry=args.dry_run)
     W, H = mouse.W, mouse.H
     model = ensure_model()

@@ -36,7 +36,7 @@ start the desktop session and its voice commands.
 
 From a source checkout, run `uv run pilot_app.py` to open the same desktop app.
 The desktop launcher saves preferences and launch flags in
-`~/.eye_mouse/setup.json`.
+`%LOCALAPPDATA%Pilotsetup.json` on Windows.
 First use can download the tracking and voice command models. Whisper dictation
 uses a separate locally cached model.
 

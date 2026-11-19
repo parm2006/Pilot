@@ -8,10 +8,10 @@ import sys
 from tempfile import NamedTemporaryFile
 from tkinter import messagebox
 
+from pilot_paths import APP_DIR, migrate_settings
 from pilot_setup import Preferences, show_setup
 from pilot_startup import DESKTOP_LOCK, configure_wake, session_lock, wait_for_wake_microphone, wake_enabled
 
-APP_DIR = Path.home() / ".eye_mouse"
 SETUP_PATH = APP_DIR / "setup.json"
 
 
@@ -44,6 +44,7 @@ def main():
             sys.stdout = stdout or quiet
             sys.stderr = stderr or quiet
             try:
+                migrate_settings()
                 if sys.argv[1:] == ["--disable-wake"]:
                     change_wake_setting(False)
                 elif sys.argv[1:] == ["--wake-settings"]:

@@ -1,12 +1,12 @@
 """Local Whisper dictation from the same 16 kHz PCM stream as voice commands."""
 from collections import deque
-from pathlib import Path
 
 import numpy as np
 
+from pilot_paths import cached_data
+
 SAMPLE_RATE = 16000
 FRAME_BYTES = 640  # WebRTC VAD accepts 20 ms of mono int16 audio at 16 kHz.
-MODEL_CACHE = Path.home() / ".eye_mouse" / "whisper"
 
 
 class SpeechBuffer:
@@ -59,7 +59,7 @@ class LocalWhisper:
     def __init__(self, model_name="base.en"):
         from faster_whisper import WhisperModel
         self.model = WhisperModel(model_name, device="cpu", compute_type="int8", cpu_threads=4,
-                                  download_root=str(MODEL_CACHE), local_files_only=True)
+                                  download_root=str(cached_data("whisper")), local_files_only=True)
 
     def transcribe(self, pcm):
         audio = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
