@@ -8,9 +8,9 @@ pilot.py - hands-free cursor control with frame-counted wink clicking
 * Hold the primary wink: single clicks at frames 7, 14, and 21, then reopen to reset.
 * --right flag swaps roles: your RIGHT eye becomes primary click, left eye = right click
 * Secondary wink: one right click per deliberate hold.
-* VOICE (local, pilot_voice.py + commands.json): say a command and it runs. Raise a HAND in front of
-  the camera and the microphone is ignored ("talk to the hand"). Say "control c" etc. for Ctrl+letter.
-  "pause listener" = silence voice only, "stop listener" = stop voice AND pilot.
+* VOICE (local, pilot_voice.py + commands.json): say a command and it runs. Face an open PALM with
+  fingers spread toward the camera to mute voice input. Say "control c" etc. for Ctrl+letter.
+  "pause listener" = silence voice only, "stop pilot" = close the desktop session.
 * Webcam is assumed to sit top-middle of the screen, so "looking straight
   into the camera" is calibrated as the top-middle of the screen.
 * Guided calibration at start (9 screen points + a wink calibration).
@@ -582,7 +582,7 @@ def analyse_wink(rest, left, right) -> dict:
 # calibration UI (full-screen OpenCV window)
 # --------------------------------------------------------------------------- #
 class Fullscreen:
-    NAME = "Eye Mouse - calibration"
+    NAME = "Pilot - calibration"
 
     def __init__(self, W, H):
         self.W, self.H = W, H
@@ -594,7 +594,8 @@ class Fullscreen:
 
     def show(self, img):
         cv2.imshow(self.NAME, img)
-        if (cv2.waitKey(1) & 0xFF) in (27, ord("q")):
+        if ((cv2.waitKey(1) & 0xFF) in (27, ord("q"))
+                or cv2.getWindowProperty(self.NAME, cv2.WND_PROP_VISIBLE) < 1):
             raise CalibrationAborted()
 
     def close(self):
@@ -631,11 +632,9 @@ def capture_point(ui, cam, tracker, mx, my, title, subtitle, idx, total):
     got = []
     while True:
         frame = read_frame(cam)
-        if frame is None:
-            continue
         now = time.perf_counter()
         el = now - t0
-        obs = tracker.process(frame, now)
+        obs = tracker.process(frame, now) if frame is not None else None
         ok = obs is not None and obs.gaze_fresh and max(obs.blink_l, obs.blink_r) < 0.4
         if el >= SETTLE_S and ok:
             got.append(obs.features())
@@ -683,11 +682,9 @@ def calibrate_wink(ui, cam, tracker):
         rows = []
         while True:
             frame = read_frame(cam)
-            if frame is None:
-                continue
             now = time.perf_counter()
             el = now - t0
-            obs = tracker.process(frame, now)
+            obs = tracker.process(frame, now) if frame is not None else None
             img = ui.blank()
             s = ui.H / 1080.0
             put_centered(img, text, int(ui.H * 0.4), 1.4 * s, (255, 255, 255), max(1, int(2 * s)))
@@ -911,7 +908,10 @@ class Preview:
                                max(self.screen[1] - img.shape[0] - 90, 0))
             except Exception:  # noqa: BLE001
                 pass
-        return cv2.waitKey(1) & 0xFF
+        key = cv2.waitKey(1) & 0xFF
+        if cv2.getWindowProperty(self.NAME, cv2.WND_PROP_VISIBLE) < 1:
+            return ord("q")
+        return key
 
 
 # --------------------------------------------------------------------------- #
@@ -948,7 +948,7 @@ def parse_args(argv=None):
     g = p.add_argument_group("voice")
     g.add_argument("--no-voice", action="store_true", help="run without the voice listener")
     g.add_argument("--no-hand-mute", action="store_true",
-                   help="do not mute the microphone while a hand is visible to the camera")
+                   help="disable voice muting by a camera-facing open palm with fingers spread")
     g.add_argument("--hand-every", type=int, default=3, help="check for a hand every N camera frames")
     g.add_argument("--commands", default=None, help="path to commands.json (default: next to pilot.py)")
     g.add_argument("--mic", default=None, help="microphone device index or name (default: system default)")
@@ -977,26 +977,29 @@ def make_wink(profile, args) -> WinkDetector:
     return WinkDetector(wp, long_hold=args.long_hold, pause_hold=args.pause_hold)
 
 
-def run(args):
+def run(args, *, on_calibrated=None):
     check_platform()
     mouse = Mouse(dry=args.dry_run)
     W, H = mouse.W, mouse.H
     model = ensure_model()
     cam = open_camera(args.camera, args.cam_width, args.cam_height)
-    tracker = FaceTracker(model)
     ctl = Controls()
-    hotkeys = start_hotkeys(ctl)
+    hotkeys = None
     preview = None
     dragging = False
     voice = None
 
     try:
+        tracker = FaceTracker(model)
+        hotkeys = start_hotkeys(ctl)
         profile = {} if args.recalibrate else load_profile(W, H)
         try:
             profile = ensure_calibration(profile, cam, tracker, W, H)
         except CalibrationAborted:
             print("Calibration aborted.")
             return
+        if on_calibrated is not None:
+            on_calibrated()
         tracker.swap_eyes = profile["wink"]["swap"]
         F, P = np.array(profile["F"]), np.array(profile["P"])
         mapper, input_name = build_mapper(F, P, W, H, args.input)
@@ -1098,7 +1101,7 @@ def run(args):
                     elif b in ("recal", "wink", "control", "input"):
                         ctl.push(b)
                 if stop_all:
-                    print("[VOICE] stop listener -> shutting down pilot")
+                    print("[VOICE] closing the Pilot session")
                     break
 
             # ---------------- cursor + gestures -----------------------------------

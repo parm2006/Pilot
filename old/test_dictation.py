@@ -79,8 +79,20 @@ class DictationTests(unittest.TestCase):
         self.engine._dirty = False
         self.engine._dictation_buffer = Mock(feed=Mock(return_value=None))
         self.engine._on_utterance = Mock()
+        self.engine.rec_paused = Mock()
+        self.engine.rec_paused.AcceptWaveform.return_value = False
         self.engine._step(b"speech containing copy or delete")
         self.engine._on_utterance.assert_not_called()
+
+    def test_explicit_stop_can_cancel_dictation(self):
+        self.engine._dirty = False
+        self.engine._dictation_buffer = Mock()
+        self.engine.router.table["stop pilot"] = compile_command("stop pilot", {"builtin": "stop_all"})
+        self.engine.rec_paused = Mock()
+        self.engine.rec_paused.Result.return_value = '{"text":"stop pilot","result":[{"conf":0.95},{"conf":0.97}]}'
+        self.engine._step(b"stop pilot")
+        self.assertIsNone(self.engine._dictation_buffer)
+        self.assertEqual(self.events.get_nowait()[1].command.builtin, "stop_all")
 
     def test_result_is_delivered_once_as_text(self):
         self.ready_result()
@@ -146,7 +158,7 @@ class DictationTests(unittest.TestCase):
         self.engine.muted = True
         self.engine._step(SPEECH)
         self.assertIsNone(self.engine._dictation_buffer)
-        self.assertEqual(self.engine.status, "MUTED (hand)")
+        self.assertEqual(self.engine.status, "MUTED (open palm)")
 
     def test_pause_cancels_captured_audio(self):
         self.engine._dirty = False

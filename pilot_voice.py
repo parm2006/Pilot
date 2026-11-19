@@ -15,7 +15,7 @@ Pipeline (all on this machine):
   then as free speech for misses (or every active utterance with --voice-verbose).
 * Prints command guesses, fallback transcripts, and match results, including rejected speech.
 * Say "dictate", then speak and pause: local Whisper transcribes and inserts that phrase.
-* "Talk to the hand": while the camera sees a hand, audio is thrown away (HandGate).
+* "Talk to the hand": face an open palm with fingers spread toward the camera to mute audio.
 * Commands live in commands.json next to pilot.py and hot-reload when you save the file.
 
 Needs:  pip install vosk sounddevice          (+ Ollama with an embedding model for fuzzy matching:
@@ -367,7 +367,7 @@ class Actuator:
 
 
 # --------------------------------------------------------------------------- #
-# "talk to the hand": mute audio while a hand is in the camera frame
+# "talk to the hand": mute audio for a camera-facing palm with fingers spread
 # --------------------------------------------------------------------------- #
 def ensure_hand_model() -> Path:
     if HAND_MODEL_PATH.exists() and HAND_MODEL_PATH.stat().st_size > 1_000_000:
@@ -380,9 +380,57 @@ def ensure_hand_model() -> Path:
     return HAND_MODEL_PATH
 
 
+def is_open_palm(landmarks, world_landmarks, handedness, frame_aspect) -> bool:
+    """Require a visible, camera-facing palm and five extended, separated fingers."""
+    if len(landmarks) != 21 or len(world_landmarks) != 21 or not handedness:
+        return False
+    side = handedness[0]
+    if side.category_name not in ("Left", "Right") or not side.score >= 0.7:
+        return False
+    image = np.array([(p.x, p.y) for p in landmarks])
+    points = np.array([(p.x, p.y, p.z) for p in world_landmarks])
+    if not np.isfinite(points).all() or not np.isfinite(image).all():
+        return False
+    if (image < 0).any() or (image > 1).any():
+        return False
+
+    palm_width = np.linalg.norm(points[5] - points[17])
+    normal = np.cross(points[5] - points[0], points[17] - points[0])
+    normal_size = np.linalg.norm(normal)
+    if palm_width < 1e-6 or normal_size < 1e-8:
+        return False
+    # MediaPipe's depth grows away from the camera. Its handedness and landmark
+    # winding both reverse on a mirrored frame, so the facing test still holds.
+    facing = normal[2] * (-1 if side.category_name == "Right" else 1) / normal_size
+    if facing < 0.65:
+        return False
+
+    for base in (1, 5, 9, 13, 17):
+        finger = points[base:base + 4]
+        length = np.linalg.norm(np.diff(finger, axis=0), axis=1).sum()
+        straightness = 0.85 if base == 1 else 0.9
+        if length < 1e-6 or np.linalg.norm(finger[-1] - finger[0]) < straightness * length:
+            return False
+        # A straight finger folded toward the wrist is not an extended finger.
+        if (np.linalg.norm(finger[-1] - points[0]) <
+                np.linalg.norm(finger[-2] - points[0]) + 0.1 * palm_width):
+            return False
+
+    # Measure the visible finger gaps in the camera image, in equal units on both axes.
+    image[:, 0] *= frame_aspect
+    visible_palm_width = np.linalg.norm(image[5] - image[17])
+    for a, b in ((4, 8), (8, 12), (12, 16), (16, 20)):
+        base_a = 2 if a == 4 else a - 3
+        base_b = b - 3
+        gap = np.linalg.norm(image[a] - image[b])
+        base_gap = np.linalg.norm(image[base_a] - image[base_b])
+        if gap < max(0.3 * visible_palm_width, 1.25 * base_gap):
+            return False
+    return True
+
+
 class HandGate:
-    """True while a hand has been visible for `on_checks` consecutive checks, and for `off_s`
-    seconds after it disappears (so a hand that flickers out of detection keeps the mute on)."""
+    """Mute after `on_checks` open-palm checks; hold for `off_s` after the gesture ends."""
 
     def __init__(self, landmarker=None, every=3, on_checks=2, off_s=0.7, width=320):
         self.every, self.on_checks, self.off_s, self.width = max(1, every), on_checks, off_s, width
@@ -400,7 +448,7 @@ class HandGate:
         from mediapipe.tasks.python import vision
         opts = vision.HandLandmarkerOptions(
             base_options=mp_python.BaseOptions(model_asset_path=str(ensure_hand_model())),
-            running_mode=vision.RunningMode.VIDEO, num_hands=1,
+            running_mode=vision.RunningMode.VIDEO, num_hands=2,
             min_hand_detection_confidence=0.6, min_hand_presence_confidence=0.5,
             min_tracking_confidence=0.5)
         return vision.HandLandmarker.create_from_options(opts)
@@ -413,7 +461,9 @@ class HandGate:
         rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
         self._ts += 33 * self.every
         res = self.lm.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), self._ts)
-        return bool(res.hand_landmarks)
+        return any(is_open_palm(image, world, side, small.shape[1] / small.shape[0])
+                   for image, world, side in
+                   zip(res.hand_landmarks, res.hand_world_landmarks, res.handedness))
 
     def update(self, frame_bgr, t: float, seen: Optional[bool] = None) -> bool:
         self.n += 1
@@ -460,7 +510,7 @@ class VoiceEngine(threading.Thread):
         super().__init__(daemon=True, name="voice")
         self.router, self.out, self.mic = router, out, mic
         self.min_conf, self.model_path, self.verbose = min_conf, model_path, verbose
-        self.muted = False            # set from the camera loop (hand up)
+        self.muted = False            # set from the camera loop (open palm)
         self.paused = False           # "pause listener"
         self.status = "STARTING"
         self.error: Optional[str] = None
@@ -648,10 +698,10 @@ class VoiceEngine(threading.Thread):
             if muted:
                 self.cancel_dictation()
             self._reset()
-            print(f"[voice] {'MUTED (hand visible)' if muted else 'hand lowered; listening resumed'}",
+            print(f"[voice] {'MUTED (open palm)' if muted else 'palm gesture ended; listening resumed'}",
                   flush=True)
         if muted:
-            self.status = "MUTED (hand)"
+            self.status = "MUTED (open palm)"
             return
         if self.paused != self._was_paused:
             self._was_paused = self.paused
@@ -660,6 +710,17 @@ class VoiceEngine(threading.Thread):
             self._reset()
         if self._dictation_buffer is not None:
             self.status = "DICTATING"
+            # Keep the explicit stop phrases available without routing dictated commands.
+            if self.rec_paused.AcceptWaveform(data):
+                heard = json.loads(self.rec_paused.Result())
+                if norm_text(heard.get("text", "")) in ("stop pilot", "stop listener"):
+                    resolved = self.router.table.get(norm_text(heard["text"]))
+                    words = heard.get("result") or []
+                    if resolved is not None and resolved.builtin == "stop_all" and words and all(
+                            word.get("conf", 0) >= self.min_conf for word in words):
+                        self.cancel_dictation()
+                        self._emit(Resolved(resolved.phrase, resolved, "exact"), heard["text"])
+                        return
             self._record_dictation(data)
             return
         self._poll_dictation()
@@ -844,6 +905,9 @@ class VoiceSystem:
                         self.engine.finish_dictation()
                 continue
             b = self.act.do(r.command)
+            if b == "stop_all":
+                self.clear_events()
+                return [b]
             if b == "pause_listener":
                 self.engine.paused = True
                 self.engine.cancel_dictation()

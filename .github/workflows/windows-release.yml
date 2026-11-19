@@ -1,0 +1,45 @@
+name: Windows installer
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-2025
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Verify, bundle and package Pilot
+        shell: pwsh
+        run: |
+          $version = uv run --locked python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw 'Release tag must match the project version'
+          }
+          uv run --locked python -m unittest discover -s old -p 'test_*.py'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tokens = $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path pilot_listener.ps1), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors) { throw ($errors -join "\n") }
+          uv run --locked --with 'pyinstaller>=6,<7' python -m PyInstaller --noconfirm packaging/Pilot.spec
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" packaging/Pilot.iss
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pilot-Windows
+          path: dist/windows-release/PilotSetup.exe
+          if-no-files-found: error
+      - name: Publish the tagged installer
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME dist/windows-release/PilotSetup.exe --verify-tag --generate-notes

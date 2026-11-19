@@ -117,12 +117,11 @@
     "scroll up fast":       { "autoscroll": 3 },
     "scroll down fast":     { "autoscroll": -3 },
     "stop scrolling":       { "autoscroll": 0 },
-    "stop":                 { "autoscroll": 0, "fuzzy": false },
 
     "dictate":              { "builtin": "dictate", "fuzzy": false, "aliases": ["start dictation"] },
     "pause listener":       { "builtin": "pause_listener", "fuzzy": false, "aliases": ["stop listening", "mute listener"] },
     "resume listener":      { "builtin": "resume_listener", "fuzzy": false, "aliases": ["start listener", "start listening"] },
-    "stop listener":        { "builtin": "stop_all", "fuzzy": false, "aliases": ["quit pilot", "shut down pilot"] },
+    "stop pilot":           { "builtin": "stop_all", "fuzzy": false, "aliases": ["stop", "stop listener", "quit pilot", "shut down pilot"] },
     "pause pilot":          { "builtin": "pause_pilot", "fuzzy": false },
     "resume pilot":         { "builtin": "resume_pilot", "fuzzy": false },
     "center cursor":        { "builtin": "recenter", "aliases": ["recenter", "reset cursor"] },

@@ -72,7 +72,7 @@ class VoiceLoggingTests(unittest.TestCase):
         self.engine._transcribe.assert_not_called()
 
     def test_spoken_pilot_controls_use_builtin_actions(self):
-        table, _, errors = load_commands(Path(__file__).with_name("commands.json"))
+        table, _, errors = load_commands(Path(__file__).resolve().parents[1] / "commands.json")
         self.assertEqual(errors, [])
         actuator = Actuator(Mock(), dry=True)
         for phrase, action in {
@@ -85,6 +85,9 @@ class VoiceLoggingTests(unittest.TestCase):
             "resume pilot": "resume_pilot",
             "pause listener": "pause_listener",
             "resume listener": "resume_listener",
+            "stop": "stop_all",
+            "stop pilot": "stop_all",
+            "stop listener": "stop_all",
             "quit pilot": "stop_all",
         }.items():
             with self.subTest(phrase=phrase):
